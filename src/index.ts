@@ -1,45 +1,139 @@
 import { Hono } from "hono";
 
+import {
+  x402Client,
+} from "@x402/core/client";
+
+import {
+  wrapFetchWithPayment,
+} from "@x402/fetch";
+
+import {
+  registerExactEvmScheme,
+} from "@x402/evm/exact/client";
+
+import {
+  privateKeyToAccount,
+} from "viem/accounts";
+
+
 const app = new Hono();
+
 
 const API =
   "https://dependency-risk-gateway.giraffehorse.workers.dev/check-package?package=requests&ecosystem=PyPI&version=2.31.0";
 
+
 app.get("/", async (c) => {
-  try {
-    const response = await fetch(API);
 
-    const headers: Record<string, string> = {};
+  const privateKey =
+    c.env.CLIENT_PRIVATE_KEY;
 
-    response.headers.forEach((value, key) => {
-      headers[key] = value;
-    });
 
-    const body = await response.text();
-
-    return c.json({
-      target: API,
-      status: response.status,
-      payment_required: response.status === 402,
-      headers,
-      body
-    });
-  } catch (error) {
+  if (!privateKey) {
     return c.json(
       {
-        error: "Failed to contact DependencyRisk Gateway.",
-        details: String(error)
+        error:
+          "CLIENT_PRIVATE_KEY secret is not configured."
       },
-      502
+      500
+    );
+  }
+
+
+  try {
+
+    const account =
+      privateKeyToAccount(
+        privateKey as `0x${string}`
+      );
+
+
+    const client =
+      new x402Client();
+
+
+    registerExactEvmScheme(
+      client,
+      {
+        signer: account,
+        networks: [
+          "eip155:84532"
+        ]
+      }
+    );
+
+
+    const fetchWithPayment =
+      wrapFetchWithPayment(
+        fetch,
+        client
+      );
+
+
+    const response =
+      await fetchWithPayment(
+        API,
+        {
+          method: "GET"
+        }
+      );
+
+
+    const body =
+      await response.text();
+
+
+    return c.json({
+      payer:
+        account.address,
+
+      target:
+        API,
+
+      status:
+        response.status,
+
+      paid:
+        response.ok,
+
+      body
+    });
+
+
+  } catch (error) {
+
+    console.error(
+      "x402 payment error:",
+      error
+    );
+
+
+    return c.json(
+      {
+        error:
+          "x402 payment failed.",
+
+        details:
+          String(error)
+      },
+      500
     );
   }
 });
 
+
 app.get("/health", (c) => {
+
   return c.json({
-    status: "healthy",
-    service: "dependency-risk-client"
+    status:
+      "healthy",
+
+    service:
+      "dependency-risk-client"
   });
+
 });
+
 
 export default app;
