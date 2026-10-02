@@ -2,5 +2,8 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "dependency-risk-client",
   "main": "src/index.ts",
-  "compatibility_date": "2026-10-02"
+  "compatibility_date": "2026-10-02",
+  "compatibility_flags": [
+    "global_fetch_strictly_public"
+  ]
 }
