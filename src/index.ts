@@ -19,18 +19,16 @@ import {
 
 const app = new Hono();
 
-
 const API =
   "https://dependency-risk-gateway.giraffehorse.workers.dev/check-package?package=requests&ecosystem=PyPI&version=2.31.0";
 
 
 app.get("/", async (c) => {
 
-  const privateKey =
+  const rawKey =
     c.env.CLIENT_PRIVATE_KEY;
 
-
-  if (!privateKey) {
+  if (!rawKey) {
     return c.json(
       {
         error:
@@ -42,6 +40,35 @@ app.get("/", async (c) => {
 
 
   try {
+
+    // Accept either:
+    // 64 hexadecimal characters
+    // OR
+    // 0x + 64 hexadecimal characters
+
+    let privateKey =
+      String(rawKey).trim();
+
+    if (!privateKey.startsWith("0x")) {
+      privateKey =
+        "0x" + privateKey;
+    }
+
+
+    if (
+      !/^0x[0-9a-fA-F]{64}$/.test(
+        privateKey
+      )
+    ) {
+      return c.json(
+        {
+          error:
+            "CLIENT_PRIVATE_KEY has an invalid format. It must contain exactly 64 hexadecimal characters, optionally preceded by 0x."
+        },
+        500
+      );
+    }
+
 
     const account =
       privateKeyToAccount(
@@ -57,9 +84,6 @@ app.get("/", async (c) => {
       client,
       {
         signer: account,
-        networks: [
-          "eip155:84532"
-        ]
       }
     );
 
@@ -75,7 +99,7 @@ app.get("/", async (c) => {
       await fetchWithPayment(
         API,
         {
-          method: "GET"
+          method: "GET",
         }
       );
 
@@ -97,7 +121,7 @@ app.get("/", async (c) => {
       paid:
         response.ok,
 
-      body
+      body,
     });
 
 
