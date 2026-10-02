@@ -1,29 +1,97 @@
 import { Hono } from "hono";
 
+import {
+  x402Client,
+  wrapFetchWithPayment,
+} from "@x402/fetch";
+
+import {
+  registerExactEvmScheme,
+} from "@x402/evm/exact/client";
+
+import {
+  privateKeyToAccount,
+} from "viem/accounts";
+
 const app = new Hono();
 
-app.get("/", (c) => {
-  const raw = c.env.CLIENT_PRIVATE_KEY;
+const API =
+  "https://dependency-risk-gateway.giraffehorse.workers.dev/check-package?package=requests&ecosystem=PyPI&version=2.31.0";
 
-  if (!raw) {
+app.get("/", async (c) => {
+  try {
+    const rawKey = String(
+      c.env.CLIENT_PRIVATE_KEY || ""
+    ).trim();
+
+    if (!rawKey) {
+      return c.json({
+        error: "CLIENT_PRIVATE_KEY is missing"
+      }, 500);
+    }
+
+    const privateKey =
+      rawKey.startsWith("0x")
+        ? rawKey
+        : `0x${rawKey}`;
+
+    const account =
+      privateKeyToAccount(
+        privateKey as `0x${string}`
+      );
+
+    const client =
+      new x402Client();
+
+    registerExactEvmScheme(
+      client,
+      {
+        signer: account,
+      }
+    );
+
+    const paidFetch =
+      wrapFetchWithPayment(
+        fetch,
+        client
+      );
+
+    const response =
+      await paidFetch(
+        API,
+        {
+          method: "GET",
+        }
+      );
+
+    const body =
+      await response.text();
+
+    return new Response(
+      body,
+      {
+        status: response.status,
+        headers: {
+          "Content-Type":
+            response.headers.get(
+              "Content-Type"
+            ) ||
+            "application/json",
+        },
+      }
+    );
+
+  } catch (error) {
+    console.error(
+      "x402 payment error:",
+      error
+    );
+
     return c.json({
-      secret_exists: false,
-      error: "CLIENT_PRIVATE_KEY is missing"
+      error: "x402 payment failed.",
+      details: String(error)
     }, 500);
   }
-
-  const key = String(raw).trim();
-
-  return c.json({
-    secret_exists: true,
-    length: key.length,
-    starts_with_0x: key.startsWith("0x"),
-    hex_after_0x: key.startsWith("0x")
-      ? /^[0-9a-fA-F]{64}$/.test(key.slice(2))
-      : /^[0-9a-fA-F]{64}$/.test(key),
-    first_character: key.charAt(0),
-    last_character: key.charAt(key.length - 1)
-  });
 });
 
 app.get("/health", (c) => {
