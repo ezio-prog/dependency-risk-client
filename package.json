@@ -1,1 +1,12 @@
-
+{
+  "name": "dependency-risk-client",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@x402/core": "^2.28.0",
+    "@x402/evm": "^2.28.0",
+    "@x402/fetch": "^2.28.0",
+    "hono": "^4.9.0"
+  }
+}
