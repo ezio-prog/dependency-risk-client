@@ -2,15 +2,12 @@ import { Hono } from "hono";
 
 import {
   x402Client,
-} from "@x402/core/client";
-
-import {
   wrapFetchWithPayment,
 } from "@x402/fetch";
 
 import {
-  registerExactEvmScheme,
-} from "@x402/evm/exact/client";
+  ExactEvmScheme,
+} from "@x402/evm";
 
 import {
   privateKeyToAccount,
@@ -19,51 +16,37 @@ import {
 
 const app = new Hono();
 
+
 const API =
   "https://dependency-risk-gateway.giraffehorse.workers.dev/check-package?package=requests&ecosystem=PyPI&version=2.31.0";
 
 
 app.get("/", async (c) => {
 
-  const rawKey =
-    c.env.CLIENT_PRIVATE_KEY;
+  const rawKey = c.env.CLIENT_PRIVATE_KEY;
 
   if (!rawKey) {
     return c.json(
       {
-        error:
-          "CLIENT_PRIVATE_KEY secret is not configured."
+        error: "CLIENT_PRIVATE_KEY secret is missing."
       },
       500
     );
   }
 
-
   try {
 
-    // Accept either:
-    // 64 hexadecimal characters
-    // OR
-    // 0x + 64 hexadecimal characters
+    let key = String(rawKey).trim();
 
-    let privateKey =
-      String(rawKey).trim();
-
-    if (!privateKey.startsWith("0x")) {
-      privateKey =
-        "0x" + privateKey;
+    if (!key.startsWith("0x")) {
+      key = "0x" + key;
     }
 
-
-    if (
-      !/^0x[0-9a-fA-F]{64}$/.test(
-        privateKey
-      )
-    ) {
+    if (!/^0x[0-9a-fA-F]{64}$/.test(key)) {
       return c.json(
         {
           error:
-            "CLIENT_PRIVATE_KEY has an invalid format. It must contain exactly 64 hexadecimal characters, optionally preceded by 0x."
+            "CLIENT_PRIVATE_KEY must be 0x followed by exactly 64 hexadecimal characters."
         },
         500
       );
@@ -72,7 +55,7 @@ app.get("/", async (c) => {
 
     const account =
       privateKeyToAccount(
-        privateKey as `0x${string}`
+        key as `0x${string}`
       );
 
 
@@ -80,15 +63,13 @@ app.get("/", async (c) => {
       new x402Client();
 
 
-    registerExactEvmScheme(
-      client,
-      {
-        signer: account,
-      }
+    client.register(
+      "eip155:84532",
+      new ExactEvmScheme(account)
     );
 
 
-    const fetchWithPayment =
+    const paidFetch =
       wrapFetchWithPayment(
         fetch,
         client
@@ -96,10 +77,10 @@ app.get("/", async (c) => {
 
 
     const response =
-      await fetchWithPayment(
+      await paidFetch(
         API,
         {
-          method: "GET",
+          method: "GET"
         }
       );
 
@@ -109,37 +90,24 @@ app.get("/", async (c) => {
 
 
     return c.json({
-      payer:
-        account.address,
-
-      target:
-        API,
-
-      status:
-        response.status,
-
-      paid:
-        response.ok,
-
-      body,
+      payer: account.address,
+      status: response.status,
+      paid: response.ok,
+      body
     });
 
 
   } catch (error) {
 
     console.error(
-      "x402 payment error:",
+      "x402 error:",
       error
     );
 
-
     return c.json(
       {
-        error:
-          "x402 payment failed.",
-
-        details:
-          String(error)
+        error: "x402 payment failed.",
+        details: String(error)
       },
       500
     );
@@ -150,11 +118,8 @@ app.get("/", async (c) => {
 app.get("/health", (c) => {
 
   return c.json({
-    status:
-      "healthy",
-
-    service:
-      "dependency-risk-client"
+    status: "healthy",
+    service: "dependency-risk-client"
   });
 
 });
